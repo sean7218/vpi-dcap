@@ -1,3 +1,4 @@
+'use strict'
 let express = require('express');
 let bodyParser = require('body-parser');
 let morgan = require('morgan');
@@ -6,12 +7,16 @@ let aws = require('aws-sdk');
 let xlsx = require('xlsx');
 let fs =  require('fs');
 
+
+
+//region Networking Code Block
 let mongoose = require('mongoose');
 
 let file = fs.readFileSync('./result.json','utf8');
 let V17494 = JSON.parse(file);
 
 mongoose.connect('mongodb://localhost/mydb');
+
 
 let db = mongoose.connection;
 db.once('open', function () {
@@ -36,8 +41,6 @@ Drawing.find({Symbol: 'BCND'}).exec(function (err, result) {
 });
 
 
-
-
 let config = require('./config');
 let s3 = new aws.S3();
 s3.config.update({
@@ -45,8 +48,28 @@ s3.config.update({
     secretAccessKey: config.secretAccessKey,
     region: 'us-east-1'
 });
+//endregion
+
 
 let app = express();
+
+// parsing incoming request
+app.use(bodyParser.urlencoded({ extended: false }));
+app.use(bodyParser.json());
+
+// serve static files from /public
+app.use(express.static(__dirname + '/public'));
+
+// view engine setup
+app.set('view engine', 'pug');
+app.set('views', __dirname + '/views');
+
+// include routes
+let routes = require('./routes/index');
+//app.use('/v2', routes);
+
+// catch 404 error and forward to error handler
+
 
 
 
@@ -121,6 +144,22 @@ router.route('/parseExcel').get(parseExcel);
 
 router.route('/getDrawings').get(getDrawings);
 
+router.get('/register', function(req, res, next){
+    res.render('register', {title: 'Sign up'});
+});
+
+router.post('/register', function(req, res, next){
+    res.send("User created");
+});
+
+router.post('/V17492/:dwgId', function (req, res) {
+    console.log(req.body);
+    res.json({
+        reqest: `Drawing: ${req.params.dwgId}`,
+        body: req.body
+    });
+    
+});
 
 function parseExcel(req, res, next) {
     console.log("Parsing Excel");
@@ -248,7 +287,7 @@ function getDrawings(req, res, next) {
             return {key: a, description: des[0].description} });
         let dwgSyms = dwgDesc.map( a => {
             let ke = a.key;
-            let sy = ke.slice(7, 11)
+            let sy = ke.slice(7, 11);
             return {key: a.key, description: a.description, symbol: sy} });
         let dwgUrls = dwgSyms.map( a => {
             let url = s3.getSignedUrl('getObject', {Bucket: 'vpi-dcap', Key: a.key, Expires: ( 86400 * 5 )});
@@ -264,12 +303,9 @@ function getDrawings(req, res, next) {
 
 }
 
-function uploadIndexJson(req, res, next) {
-    
-}
+
 
 app.use(morgan('combined'));
-app.use(bodyParser.json());
 app.use('/v1', router);
 
 
