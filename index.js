@@ -1,4 +1,4 @@
-'use strict'
+'use strict';
 let express = require('express');
 let bodyParser = require('body-parser');
 let morgan = require('morgan');
@@ -6,7 +6,8 @@ let uuid = require('uuid');
 let aws = require('aws-sdk');
 let xlsx = require('xlsx');
 let fs =  require('fs');
-
+let User = require('./models/user');
+var session = require('express-session');
 
 
 //region Networking Code Block
@@ -30,6 +31,7 @@ let drawingSchema = mongoose.Schema({
     }, {
         collection: 'mycol'
     });
+
 let Drawing = mongoose.model('Drawing', drawingSchema);
 Drawing.find({Symbol: 'BCND'}).exec(function (err, result) {
     if (err) {
@@ -53,6 +55,16 @@ s3.config.update({
 
 let app = express();
 
+app.use(session({
+    secret: 'pecuniamsekretsession',
+    resave: false,
+    saveUninitialized: true,
+    cookie: {
+        secure: false,
+        maxAge: 864000
+    }
+}));
+
 // parsing incoming request
 app.use(bodyParser.urlencoded({ extended: false }));
 app.use(bodyParser.json());
@@ -67,11 +79,6 @@ app.set('views', __dirname + '/views');
 // include routes
 let routes = require('./routes/index');
 //app.use('/v2', routes);
-
-// catch 404 error and forward to error handler
-
-
-
 
 let router = express.Router();
 
@@ -144,12 +151,96 @@ router.route('/parseExcel').get(parseExcel);
 
 router.route('/getDrawings').get(getDrawings);
 
-router.get('/register', function(req, res, next){
+router.route('/register').get(function(req, res, next){
     res.render('register', {title: 'Sign up'});
 });
 
-router.post('/register', function(req, res, next){
-    res.send("User created");
+router.route('/register').post(function(req, res, next){
+    if (req.body.email &&
+        req.body.username &&
+        req.body.password &&
+        req.body.favoriteBook &&
+        req.body.confirmPassword) {
+
+        // Confirm user typed in the same password
+        if (req.body.password !== req.body.confirmPassword) {
+            let err = new Error("Passwords do not match");
+            err.status = 400;
+            return next(err);
+        }
+
+        // create an object with input
+        let userData = {
+            email: req.body.email,
+            username: req.body.username,
+            password: req.body.password,
+            favoriteBook: req.body.favoriteBook
+        };
+
+        // use schema's 'create' method to insert an document into Mongo
+        User.create(userData, function(err, data){
+            if (err){
+                return next(err);
+            } else {
+                //req.session.userId = data._id;
+                return res.render('profile')
+            }
+        });
+    } else {
+        let err = new Error("All fields required.");
+        err.status = 400;
+        return next(err);
+    }
+});
+
+router.route('/login').get(function(req, res, next){
+    return res.render('login', { title: 'login page'});
+});
+
+router.route('/login').post(function(req, res, next){
+
+    if (req.body.email && req.body.password) {
+        User.authenticate(req.body.email, req.body.password, function(err, user){
+
+            if (err || !user) {
+                //return res.json({status: "err or no user",err: err, user: user});
+                let err = new Error("Wrong Email or Password");
+                err.status = 401;
+                return next(err);
+            } else {
+                //return res.json({status: "successfully login", id: user._id});
+                console.log("Session creation");
+                console.log(user._id);
+                req.session.userId = user._id;
+
+                return res.redirect('/v1/profile');
+            }
+        });
+    } else {
+        let err = new Error("Email and Password field can't be empty");
+        err.status = 401;
+        return next(err);
+    }
+});
+
+router.route('/profile').get(function (req, res, next) {
+    console.log("sessionID is: " + req.session);
+    res.json(req.session);
+    if(!req.session.userId) {
+        let err = new Error("You are not authorized to view this page");
+        err.status = 403; // Forbidden
+        return next(err);
+    }
+    User.findById(req.session.userId)
+        .exec(function(err, user){
+            if (err) {
+                console.log("error was found when findbyID");
+                return next(err);
+            } else {
+                console.log("successfully found the userbyID");
+                return res.render('profile', {title: "Profile",name: user.username, favorite: user.favoriteBook});
+            }
+        });
 });
 
 router.post('/V17492/:dwgId', function (req, res) {
