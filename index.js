@@ -7,7 +7,7 @@ let aws = require('aws-sdk');
 let xlsx = require('xlsx');
 let fs =  require('fs');
 let User = require('./models/user');
-var session = require('express-session');
+let session = require('express-session');
 
 
 //region Networking Code Block
@@ -16,14 +16,13 @@ let mongoose = require('mongoose');
 let file = fs.readFileSync('./result.json','utf8');
 let V17494 = JSON.parse(file);
 
-mongoose.connect('mongodb://localhost/mydb');
+mongoose.connect('mongodb://localhost/mydb' , {
+    useMongoClient: true
+});
 
 
 let db = mongoose.connection;
-db.once('open', function () {
-        // we are connected
-        //console.log("Connection is established with mydb");
-    });
+mongoose.Promise = global.Promise;
 let drawingSchema = mongoose.Schema({
         Key: String,
         Description: String,
@@ -60,8 +59,7 @@ app.use(session({
     resave: false,
     saveUninitialized: true,
     cookie: {
-        secure: false,
-        maxAge: 864000
+        secure: false
     }
 }));
 
@@ -77,8 +75,8 @@ app.set('view engine', 'pug');
 app.set('views', __dirname + '/views');
 
 // include routes
-let routes = require('./routes/index');
-//app.use('/v2', routes);
+let routesV2 = require('./routes/index');
+app.use('/v2', routesV2);
 
 let router = express.Router();
 
@@ -182,7 +180,7 @@ router.route('/register').post(function(req, res, next){
             if (err){
                 return next(err);
             } else {
-                //req.session.userId = data._id;
+                req.session.userId = data._id;
                 return res.render('profile')
             }
         });
@@ -209,8 +207,8 @@ router.route('/login').post(function(req, res, next){
                 return next(err);
             } else {
                 //return res.json({status: "successfully login", id: user._id});
-                console.log("Session creation");
-                console.log(user._id);
+                //console.log("Session creation");
+                //console.log(user._id);
                 req.session.userId = user._id;
 
                 return res.redirect('/v1/profile');
@@ -224,8 +222,8 @@ router.route('/login').post(function(req, res, next){
 });
 
 router.route('/profile').get(function (req, res, next) {
-    console.log("sessionID is: " + req.session);
-    res.json(req.session);
+    console.log("sessionID is: " + req.session.userId);
+    //res.json(req.session);
     if(!req.session.userId) {
         let err = new Error("You are not authorized to view this page");
         err.status = 403; // Forbidden
@@ -240,6 +238,10 @@ router.route('/profile').get(function (req, res, next) {
                 console.log("successfully found the userbyID");
                 return res.render('profile', {title: "Profile",name: user.username, favorite: user.favoriteBook});
             }
+        })
+        .then(function(resolve, reject){
+            console.log("Resolve: " + resolve);
+            console.log("Reject: " + reject);
         });
 });
 
@@ -400,9 +402,24 @@ app.use(morgan('combined'));
 app.use('/v1', router);
 
 
+// catch 404  forward to error handler
+app.use(function(req, res, next){
+    let err = new Error("File Not Found");
+    err.status = 404;
+    next(err);
+});
 
+// error handler define as the last app.use callback
+app.use(function(err, req, res, next){
+    res.status(err.status || 500);
+    res.render('error', {
+        message: err.message,
+        error: {}
+    });
+});
+
+// connection
 let PORT = process.env.PORT || 3000;
 let HOST = process.env.HOST || '127.0.0.1';
-
 console.log("Listening on ", HOST, PORT);
 app.listen(PORT, HOST);
