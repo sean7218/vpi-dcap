@@ -20,6 +20,8 @@ const DrawingSchema = mongoose.Schema({
         required: false,
         trim: true
     }
+}, {
+    collection: 'mycol'
 });
 const Drawing = mongoose.model('Drawing', DrawingSchema);
 

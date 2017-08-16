@@ -7,31 +7,25 @@ let aws = require('aws-sdk');
 let xlsx = require('xlsx');
 let fs =  require('fs');
 let User = require('./models/user');
+let Drawing = require('./models/drawing');
 let session = require('express-session');
-
-
-//region Networking Code Block
+let routesV2 = require('./routes/index');
 let mongoose = require('mongoose');
+let MongoStore = require('connect-mongo')(session);
+
+//region === Networking Code Block ===
 
 let file = fs.readFileSync('./result.json','utf8');
 let V17494 = JSON.parse(file);
 
+
 mongoose.connect('mongodb://localhost/mydb' , {
     useMongoClient: true
 });
-
-
 let db = mongoose.connection;
+db.on('error', console.error.bind(console, 'connection error:'));
 mongoose.Promise = global.Promise;
-let drawingSchema = mongoose.Schema({
-        Key: String,
-        Description: String,
-        Symbol: String
-    }, {
-        collection: 'mycol'
-    });
 
-let Drawing = mongoose.model('Drawing', drawingSchema);
 Drawing.find({Symbol: 'BCND'}).exec(function (err, result) {
     if (err) {
         //console.log(err)
@@ -41,7 +35,6 @@ Drawing.find({Symbol: 'BCND'}).exec(function (err, result) {
     }
 });
 
-
 let config = require('./config');
 let s3 = new aws.S3();
 s3.config.update({
@@ -49,18 +42,19 @@ s3.config.update({
     secretAccessKey: config.secretAccessKey,
     region: 'us-east-1'
 });
+
 //endregion
 
-
+//region === App.Express setup ===
 let app = express();
 
 app.use(session({
     secret: 'pecuniamsekretsession',
-    resave: false,
-    saveUninitialized: true,
-    cookie: {
-        secure: false
-    }
+    resave: true,
+    saveUninitialized: false,
+    store: new MongoStore({
+        mongooseConnection: db
+    })
 }));
 
 // parsing incoming request
@@ -73,10 +67,6 @@ app.use(express.static(__dirname + '/public'));
 // view engine setup
 app.set('view engine', 'pug');
 app.set('views', __dirname + '/views');
-
-// include routes
-let routesV2 = require('./routes/index');
-app.use('/v2', routesV2);
 
 let router = express.Router();
 
@@ -139,6 +129,15 @@ let keyDescriptions = [
     }
 ];
 
+//endregion
+
+// Make userId available to all templates
+app.use(function(req, res, next){
+    res.locals.currentUser = req.session.userId;
+    console.log("CurrentUser: " + res.locals.currentUser);
+    next();
+});
+
 router.route('/get_signed_url').get(getSignedURL);
 
 router.route('/listObjects').get(getObjectList);
@@ -149,102 +148,6 @@ router.route('/parseExcel').get(parseExcel);
 
 router.route('/getDrawings').get(getDrawings);
 
-router.route('/register').get(function(req, res, next){
-    res.render('register', {title: 'Sign up'});
-});
-
-router.route('/register').post(function(req, res, next){
-    if (req.body.email &&
-        req.body.username &&
-        req.body.password &&
-        req.body.favoriteBook &&
-        req.body.confirmPassword) {
-
-        // Confirm user typed in the same password
-        if (req.body.password !== req.body.confirmPassword) {
-            let err = new Error("Passwords do not match");
-            err.status = 400;
-            return next(err);
-        }
-
-        // create an object with input
-        let userData = {
-            email: req.body.email,
-            username: req.body.username,
-            password: req.body.password,
-            favoriteBook: req.body.favoriteBook
-        };
-
-        // use schema's 'create' method to insert an document into Mongo
-        User.create(userData, function(err, data){
-            if (err){
-                return next(err);
-            } else {
-                req.session.userId = data._id;
-                return res.render('profile')
-            }
-        });
-    } else {
-        let err = new Error("All fields required.");
-        err.status = 400;
-        return next(err);
-    }
-});
-
-router.route('/login').get(function(req, res, next){
-    return res.render('login', { title: 'login page'});
-});
-
-router.route('/login').post(function(req, res, next){
-
-    if (req.body.email && req.body.password) {
-        User.authenticate(req.body.email, req.body.password, function(err, user){
-
-            if (err || !user) {
-                //return res.json({status: "err or no user",err: err, user: user});
-                let err = new Error("Wrong Email or Password");
-                err.status = 401;
-                return next(err);
-            } else {
-                //return res.json({status: "successfully login", id: user._id});
-                //console.log("Session creation");
-                //console.log(user._id);
-                req.session.userId = user._id;
-
-                return res.redirect('/v1/profile');
-            }
-        });
-    } else {
-        let err = new Error("Email and Password field can't be empty");
-        err.status = 401;
-        return next(err);
-    }
-});
-
-router.route('/profile').get(function (req, res, next) {
-    console.log("sessionID is: " + req.session.userId);
-    //res.json(req.session);
-    if(!req.session.userId) {
-        let err = new Error("You are not authorized to view this page");
-        err.status = 403; // Forbidden
-        return next(err);
-    }
-    User.findById(req.session.userId)
-        .exec(function(err, user){
-            if (err) {
-                console.log("error was found when findbyID");
-                return next(err);
-            } else {
-                console.log("successfully found the userbyID");
-                return res.render('profile', {title: "Profile",name: user.username, favorite: user.favoriteBook});
-            }
-        })
-        .then(function(resolve, reject){
-            console.log("Resolve: " + resolve);
-            console.log("Reject: " + reject);
-        });
-});
-
 router.post('/V17492/:dwgId', function (req, res) {
     console.log(req.body);
     res.json({
@@ -253,6 +156,8 @@ router.post('/V17492/:dwgId', function (req, res) {
     });
     
 });
+
+
 
 function parseExcel(req, res, next) {
     console.log("Parsing Excel");
@@ -397,10 +302,10 @@ function getDrawings(req, res, next) {
 }
 
 
-
+// setup loging and the routes
 app.use(morgan('combined'));
 app.use('/v1', router);
-
+app.use('/v2', routesV2);
 
 // catch 404  forward to error handler
 app.use(function(req, res, next){
@@ -413,7 +318,7 @@ app.use(function(req, res, next){
 app.use(function(err, req, res, next){
     res.status(err.status || 500);
     res.render('error', {
-        message: err.message,
+        message: `Error Type: ${err.status} | Error Message: ${err.message} `,
         error: {}
     });
 });

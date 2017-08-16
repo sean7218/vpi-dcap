@@ -2,3 +2,9 @@
     color: red;
     text-align: center;
 }
+
+.avatar {
+    height: 42px;
+    width: 42px;
+    text-align: right;
+}
