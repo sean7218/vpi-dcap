@@ -10,8 +10,11 @@ let User = require('./models/user');
 let Drawing = require('./models/drawing');
 let session = require('express-session');
 let routesV2 = require('./routes/index');
+let routesV3 = require('./routes/auth');
 let mongoose = require('mongoose');
 let MongoStore = require('connect-mongo')(session);
+let passport = require('passport');
+
 
 //region === Networking Code Block ===
 
@@ -47,6 +50,8 @@ s3.config.update({
 
 //region === App.Express setup ===
 let app = express();
+
+
 
 app.use(session({
     secret: 'pecuniamsekretsession',
@@ -306,6 +311,7 @@ function getDrawings(req, res, next) {
 app.use(morgan('combined'));
 app.use('/v1', router);
 app.use('/v2', routesV2);
+app.use('/auth', routesV3);
 
 // catch 404  forward to error handler
 app.use(function(req, res, next){
@@ -322,6 +328,7 @@ app.use(function(err, req, res, next){
         error: {}
     });
 });
+
 
 // connection
 let PORT = process.env.PORT || 3000;

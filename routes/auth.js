@@ -5,17 +5,40 @@ let passport = require('passport');
 let Strategy = require('passport-facebook').Strategy;
 
 
-
+// Configure the Facebook strategy for use by Passport.
+//
+// OAuth 2.0-based strategies require a `verify` function which receives the
+// credential (`accessToken`) for accessing the Facebook API on the user's
+// behalf, along with the user's profile.  The function must invoke `cb`
+// with a user object, which will be set at `req.user` in route handlers after
+// authentication.
 passport.use(new Strategy(
     {
-        clientId: "111171992898481",
-        _clientSecret: "b10c301f2f377b3b6d856ebd1c6ea3c8",
-        callback: 'http://localhost:3000/v3/auth/facebook/return'
+        clientID: "111171992898481",
+        clientSecret: "b10c301f2f377b3b6d856ebd1c6ea3c8",
+        callbackURL: 'http://localhost:3000/auth/login/facebook/return',
+        profileFields: ['id','email', 'displayName', 'photos', 'gender','link']
 
     },
     function(accessToken, refreshToken, profile, cb){
+        // In this example, the user's Facebook profile is supplied as the user
+        // record.  In a production-quality application, the Facebook profile should
+        // be associated with a user record in the application's database, which
+        // allows for account linking and authentication with other identity
+        // providers.
+        console.log("accessToken: " + accessToken);
+        console.log("refreshToken: " + refreshToken);
+        console.log("profileName: "+ profile);
+        console.log("profileEmail: "+ Object.keys(profile));
+        console.log("profileUrl: " + profile['id']);
+        console.log("photo: " + profile['displayName']);
+        console.log("profileUrl: " + profile.photos);
+        console.log("json: " + profile['_json']);
+        console.log("jsonKrys: " + Object.keys(profile['_json']));
+        console.log("_raw: " + profile['_raw']);
         return cb(null, profile);
     }));
+
 
 
 // Configure Passport authenticated session persistence
@@ -33,29 +56,32 @@ passport.deserializeUser(function(obj, cb){
     cb(null, obj);
 });
 
-// Initialize passport and restore authentification state if any, from the session
+// Initialize Passport and restore authentication state, if any, from the
+// session.
 router.use(passport.initialize());
 router.use(passport.session());
 
-
-router.get('/auth/', function(req, res, next){
-    return res.send('Auth root route');
+router.get('/', function(req, res, next){
+    return res.send('Homepage for the auth');
 });
 
-router.get('/auth/login', function(req, res, next){
-    return res.send('Logging in the facebook');
+router.get('/login', function(req, res, next){
+    return res.render('loginSocial');
 });
 
-router.get('/auth/login/facebook', function(req, res, next){
-    return res.json({facebook: 'logging with facebook'});
-});
+router.get('/login/facebook',
+    passport.authenticate('facebook', { scope: ['user_friends', 'manage_pages', 'user_likes', 'email'] }));
 
-router.get('/auth/facebook/login/facebook/return', function(req, res, next){
-    return res.send('this is the return for the url')
-});
+router.get('/login/facebook/return',
+    passport.authenticate('facebook', { failureRedirect: '/' }),
+    function (req, res) {
+        res.redirect('/auth');
+    });
 
-router.get('/auth/facebook/profile', function (req, res, next) {
-    return res.json({profile: "This is the profile info"});
+router.get('/profile',
+    require('connect-ensure-login').ensureLoggedIn(),
+    function (req, res) {
+    return res.json({ profile: req.user});
 });
 
 module.exports = router;
