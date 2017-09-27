@@ -66,21 +66,46 @@ router.get('/', function(req, res, next){
 });
 
 router.get('/login', function(req, res, next){
+    console.log("Authenticated Status: " + req.isAuthenticated());
     return res.render('loginSocial');
 });
 
 router.get('/login/facebook',
-    passport.authenticate('facebook', { scope: ['user_friends', 'manage_pages', 'user_likes', 'email'] }));
+    passport.authenticate('facebook', { scope: ['user_friends', 'manage_pages', 'user_likes', 'email'] })
+);
 
 router.get('/login/facebook/return',
     passport.authenticate('facebook', { failureRedirect: '/' }),
     function (req, res) {
+        console.log("Authenticated Status: " + req.isAuthenticated());
         res.redirect('/auth');
     });
 
+router.get('/logout', function (req, res) {
+    req.logOut();
+    console.log("Authenticated Status: " + req.isAuthenticated());
+    res.send("loggedout");
+});
+
+router.get('/error', function(req, res){
+    res.send("Sorry you do not have the access to this page");
+});
+
+router.get('/intranet',
+    function(req, res, next) {
+        if(req.isAuthenticated()){
+            return next();
+        } else {
+            res.send("Not Authorized")
+        }
+    },
+    function(req, res){
+    res.send("This is the intranet");
+});
 router.get('/profile',
-    require('connect-ensure-login').ensureLoggedIn(),
+    require('connect-ensure-login').ensureLoggedIn({ redirectTo: '/auth/login'}),
     function (req, res) {
+
     return res.json({ profile: req.user});
 });
 

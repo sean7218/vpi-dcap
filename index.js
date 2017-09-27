@@ -14,8 +14,9 @@ let routesV3 = require('./routes/auth');
 let mongoose = require('mongoose');
 let MongoStore = require('connect-mongo')(session);
 let passport = require('passport');
-
-
+let ensureLoggedIn = require('connect-ensure-login').ensureLoggedIn;
+let twitterRoutes = require('./routes/twitter');
+let facebookRoutes = require('./routes/facebook');
 //region === Networking Code Block ===
 
 let file = fs.readFileSync('./result.json','utf8');
@@ -61,6 +62,11 @@ app.use(session({
         mongooseConnection: db
     })
 }));
+
+// Initialize Passport and restore authentication state, if any, from the
+// session.
+// app.use(passport.initialize());
+// app.use(passport.session());
 
 // parsing incoming request
 app.use(bodyParser.urlencoded({ extended: false }));
@@ -153,6 +159,12 @@ router.route('/parseExcel').get(parseExcel);
 
 router.route('/getDrawings').get(getDrawings);
 
+router.get('/V17492',
+    passport.authenticate('facebook', {successRedirect: '/v1/getDrawings', failureRedirect:'/auth/error'}),
+    function(req, res, next){
+    res.send('This is drawing root query ');
+});
+
 router.post('/V17492/:dwgId', function (req, res) {
     console.log(req.body);
     res.json({
@@ -161,8 +173,6 @@ router.post('/V17492/:dwgId', function (req, res) {
     });
     
 });
-
-
 
 function parseExcel(req, res, next) {
     console.log("Parsing Excel");
@@ -312,6 +322,8 @@ app.use(morgan('combined'));
 app.use('/v1', router);
 app.use('/v2', routesV2);
 app.use('/auth', routesV3);
+app.use('/tw', twitterRoutes);
+app.use('/fb',facebookRoutes);
 
 // catch 404  forward to error handler
 app.use(function(req, res, next){
